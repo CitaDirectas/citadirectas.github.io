@@ -6,50 +6,99 @@
 <title>Reservar cita</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
-  body { font-family: Arial, sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; color: #222; }
-  h1 { font-size: 22px; }
+  body { font-family: Arial, sans-serif; margin: 0; min-height: 100vh; background-size: cover; background-position: center; background-color: #1F3A5F; display: flex; align-items: center; justify-content: center; padding: 24px 0; }
+  .tarjeta { background: rgba(255,255,255,0.95); max-width: 440px; width: 92%; margin: 0 auto; padding: 24px; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.25); }
+  h1 { font-size: 22px; margin-top:0; color:#1F3A5F; }
   label { display:block; margin-top:14px; font-weight:bold; font-size:14px; }
   input, select { width:100%; padding:8px; margin-top:4px; box-sizing:border-box; font-size:15px; }
   button { margin-top:20px; width:100%; padding:12px; background:#1F3A5F; color:#fff; border:none; border-radius:4px; font-size:16px; cursor:pointer; }
+  .btn-calendario { background:#2E7D32; margin-top:10px; }
   #mensaje { margin-top:16px; font-weight:bold; }
+  #confirmacion { display:none; }
+  #errorNegocio { display:none; text-align:center; color:#B02A2A; font-weight:bold; }
 </style>
 </head>
-<body>
-<h1>Reservar cita</h1>
-<form id="formReserva">
-  <label>Nombre y apellidos</label>
-  <input type="text" id="nombre" required>
-  <label>Telefono (9 digitos)</label>
-  <input type="tel" id="telefono" required pattern="[0-9]{9}">
-  <label>Matricula / Referencia</label>
-  <input type="text" id="matricula" required>
-  <label>Servicio</label>
-  <select id="servicio" required></select>
-  <label>Fecha</label>
-  <input type="date" id="fecha" required>
-  <label>Hora</label>
-  <select id="hora" required></select>
-  <button type="submit">Reservar</button>
-</form>
-<div id="mensaje"></div>
+<body id="body">
+<div class="tarjeta">
+  <div id="errorNegocio">No se ha encontrado este negocio. Revisa el enlace o el codigo QR.</div>
+  <div id="contenido">
+    <h1 id="tituloNegocio">Reservar cita</h1>
+ 
+    <form id="formReserva">
+      <label>Nombre y apellidos</label>
+      <input type="text" id="nombre" required>
+      <label>Telefono (9 digitos)</label>
+      <input type="tel" id="telefono" required pattern="[0-9]{9}">
+      <label>Email</label>
+      <input type="email" id="email" required>
+      <label>Servicio</label>
+      <select id="servicio" required></select>
+      <div id="camposExtra"></div>
+      <label>Fecha</label>
+      <input type="date" id="fecha" required>
+      <label>Hora</label>
+      <select id="hora" required></select>
+      <button type="submit">Reservar</button>
+    </form>
+ 
+    <div id="mensaje"></div>
+ 
+    <div id="confirmacion">
+      <p>Tu cita ha sido confirmada. Anadela a tu calendario para recibir el aviso (1 dia antes y 2 horas antes):</p>
+      <button class="btn-calendario" id="btnIcsCal">Anadir a mi calendario (con recordatorios)</button>
+      <button class="btn-calendario" id="btnGoogleCal">Abrir directo en Google Calendar</button>
+    </div>
+  </div>
+</div>
  
 <script>
-  const SUPABASE_URL = https://ggnjqjwasybbhosnjomk.supabase.co/rest/v1/;
-  const SUPABASE_ANON_KEY = sb_publishable_cLZ44Bj1DDz6gfFn1LEcqQ_w08vUwNh;
+  const SUPABASE_URL = "PEGA_AQUI_TU_PROJECT_URL";
+  const SUPABASE_ANON_KEY = "PEGA_AQUI_TU_ANON_KEY";
   const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
  
-  async function cargarServicios() {
-    const { data, error } = await client.from('SERVICIO').select('id, nombre, precio, duracion');
-    const select = document.getElementById('servicio');
-    if (error || !data) { select.innerHTML = '<option value="">No se pudieron cargar los servicios</option>'; return; }
-    select.innerHTML = data.map(s => '<option value="' + s.id + '">' + s.nombre + ' - ' + s.precio + 'EUR (' + (s.duracion || 60) + ' min)</option>').join('');
+  const slugNegocio = new URLSearchParams(window.location.search).get('negocio');
+  let negocio = null;
+ 
+  async function cargarNegocio() {
+    if (!slugNegocio) { mostrarErrorNegocio(); return false; }
+    const { data, error } = await client.from('negocio_publico').select('*').eq('slug', slugNegocio).single();
+    if (error || !data) { mostrarErrorNegocio(); return false; }
+    negocio = data;
+    document.getElementById('tituloNegocio').textContent = negocio.nombre_negocio || 'Reservar cita';
+    document.title = negocio.nombre_negocio || 'Reservar cita';
+    if (negocio.foto_fondo) {
+      document.getElementById('body').style.backgroundImage = "url('" + negocio.foto_fondo + "')";
+    }
+    return true;
   }
  
-  async function cargarHoras() {
-    const { data } = await client.from('horario_publico').select('*').single();
+  function mostrarErrorNegocio() {
+    document.getElementById('errorNegocio').style.display = 'block';
+    document.getElementById('contenido').style.display = 'none';
+  }
+ 
+  async function cargarServicios() {
+    const { data, error } = await client.from('SERVICIO').select('id, nombre, precio, duracion').eq('negocio_id', negocio.id);
+    const select = document.getElementById('servicio');
+    if (error || !data) { select.innerHTML = '<option value="">No se pudieron cargar los servicios</option>'; return; }
+    select.innerHTML = data.map(s => '<option value="' + s.id + '" data-duracion="' + (s.duracion||60) + '" data-nombre="' + s.nombre + '">' + s.nombre + ' - ' + s.precio + 'EUR (' + (s.duracion || 60) + ' min)</option>').join('');
+  }
+ 
+  async function cargarCamposExtra() {
+    const { data, error } = await client.from('CAMPOS_FORMULARIO').select('*').eq('negocio_id', negocio.id).order('orden');
+    const contenedor = document.getElementById('camposExtra');
+    if (error || !data) { contenedor.innerHTML = ''; return; }
+    contenedor.innerHTML = data.map(c => {
+      const tipoInput = c.tipo === 'telefono' ? 'tel' : (c.tipo === 'numero' ? 'number' : 'text');
+      const req = c.obligatorio ? 'required' : '';
+      return '<label>' + c.etiqueta + '</label><input type="' + tipoInput + '" data-campo="' + c.campo + '" class="campo-extra" ' + req + '>';
+    }).join('');
+  }
+ 
+  function cargarHoras() {
     const select = document.getElementById('hora');
-    const inicio = data ? data.horario_inicio : 8;
-    const fin = data ? data.horario_fin : 20;
+    const inicio = negocio.horario_inicio || 8;
+    const fin = negocio.horario_fin || 20;
     let opciones = '';
     for (let m = inicio * 60; m < fin * 60; m += 30) {
       const hh = String(Math.floor(m / 60)).padStart(2, '0');
@@ -57,10 +106,36 @@
       opciones += '<option value="' + hh + ':' + mm + '">' + hh + ':' + mm + '</option>';
     }
     select.innerHTML = opciones;
-}
+  }
  
-  cargarServicios();
-  cargarHoras();
+  async function iniciar() {
+    const ok = await cargarNegocio();
+    if (!ok) return;
+    await cargarServicios();
+    await cargarCamposExtra();
+    cargarHoras();
+  }
+  iniciar();
+ 
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function formatoUTC(d) {
+    return d.getUTCFullYear() + pad(d.getUTCMonth() + 1) + pad(d.getUTCDate()) + 'T' + pad(d.getUTCHours()) + pad(d.getUTCMinutes()) + '00Z';
+  }
+ 
+  function generarICS(titulo, inicio, duracionMinutos) {
+    const fin = new Date(inicio.getTime() + duracionMinutos * 60000);
+    return [
+      'BEGIN:VCALENDAR', 'VERSION:2.0', 'BEGIN:VEVENT',
+      'UID:' + Date.now() + '@reservas',
+      'DTSTAMP:' + formatoUTC(new Date()),
+      'DTSTART:' + formatoUTC(inicio),
+      'DTEND:' + formatoUTC(fin),
+      'SUMMARY:' + titulo,
+      'BEGIN:VALARM', 'TRIGGER:-P1D', 'ACTION:DISPLAY', 'DESCRIPTION:Recordatorio de cita (1 dia antes)', 'END:VALARM',
+      'BEGIN:VALARM', 'TRIGGER:-PT2H', 'ACTION:DISPLAY', 'DESCRIPTION:Recordatorio de cita (2 horas antes)', 'END:VALARM',
+      'END:VEVENT', 'END:VCALENDAR'
+    ].join('\r\n');
+  }
  
   document.getElementById('formReserva').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -70,28 +145,63 @@
  
     const nombre = document.getElementById('nombre').value.trim();
     const telefono = document.getElementById('telefono').value.trim();
-    const matricula = document.getElementById('matricula').value.trim().toUpperCase();
-    const servicioId = document.getElementById('servicio').value;
+    const email = document.getElementById('email').value.trim();
+    const servicioSelect = document.getElementById('servicio');
+    const servicioId = servicioSelect.value;
+    const opcionServicio = servicioSelect.selectedOptions[0];
+    const duracion = opcionServicio ? Number(opcionServicio.getAttribute('data-duracion')) : 60;
+    const nombreServicio = opcionServicio ? opcionServicio.getAttribute('data-nombre') : 'Cita';
     const fecha = document.getElementById('fecha').value;
     const hora = document.getElementById('hora').value;
     const fechaHora = fecha + ' ' + hora + ':00';
  
+    const datosExtra = {};
+    document.querySelectorAll('.campo-extra').forEach(input => {
+      datosExtra[input.getAttribute('data-campo')] = input.value.trim();
+    });
+ 
     const { error } = await client.from('CITAS').insert([{
+      negocio_id: negocio.id,
       nombre_cliente: nombre,
       telefono: telefono,
-      matricula: matricula,
+      email: email,
       servicio_id: servicioId,
-      fecha_hora: fechaHora
+      fecha_hora: fechaHora,
+      datos_extra: datosExtra
     }]);
  
     if (error) {
       mensaje.style.color = '#B02A2A';
       mensaje.textContent = 'No hay disponibilidad para esa hora. Prueba con otra franja.';
-    } else {
-      mensaje.style.color = '#2E7D32';
-      mensaje.textContent = 'Cita reservada correctamente!';
-      document.getElementById('formReserva').reset();
+      return;
     }
+ 
+    mensaje.style.color = '#2E7D32';
+    mensaje.textContent = 'Cita reservada correctamente!';
+    document.getElementById('formReserva').style.display = 'none';
+    document.getElementById('confirmacion').style.display = 'block';
+ 
+    const inicioDate = new Date(fecha + 'T' + hora + ':00');
+    const tituloEvento = nombreServicio + ' - ' + (negocio.nombre_negocio || 'Cita');
+ 
+    document.getElementById('btnIcsCal').onclick = () => {
+      const ics = generarICS(tituloEvento, inicioDate, duracion);
+      const blob = new Blob([ics], { type: 'text/calendar' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'cita.ics';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    };
+ 
+    document.getElementById('btnGoogleCal').onclick = () => {
+      const finDate = new Date(inicioDate.getTime() + duracion * 60000);
+      const url = 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' +
+        encodeURIComponent(tituloEvento) + '&dates=' + formatoUTC(inicioDate) + '/' + formatoUTC(finDate);
+      window.open(url, '_blank');
+    };
   });
 </script>
 </body>
